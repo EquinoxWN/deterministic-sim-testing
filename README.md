@@ -151,7 +151,7 @@ Latest local run (full detail in [docs/results/m1.md](docs/results/m1.md)):
 |---|---|
 | Tests | 39 passed, 0 failed |
 | Lint | gofmt, go vet, `dst lint example/kv`: clean |
-| Audit | govulncheck v1.8.0 (Go 1.26.9): no vulnerabilities; no third-party modules |
+| Audit | govulncheck v1.8.0 (Go 1.26.10): no vulnerabilities; no third-party modules |
 | Correct store, 1,000 seeds (5% loss, 2% duplicates) | 0 failures; 561,593 events, 39 min of virtual time in 2.07 s (1135x) |
 | Seeded arrival-order bug, same 1,000 seeds | 288 failing seeds: 280 stale values, 8 missing keys on a backup |
 | Replay of failing seed 2 | 3 of 3 runs identical: 539 events, same trace hash, same failure |

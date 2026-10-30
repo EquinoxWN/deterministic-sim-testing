@@ -17,7 +17,7 @@ lint:
 test:
 	go test $(GOTESTFLAGS) -count=1 ./...
 
-# Known vulnerabilities in the code paths actually called (Go 1.26.9, as in CI).
+# Known vulnerabilities in the code paths actually called (Go 1.26.10, as in CI).
 audit:
 	go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
