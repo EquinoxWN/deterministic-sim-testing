@@ -123,15 +123,20 @@ func Run(seed uint64, o Options) (Outcome, error) {
 		}
 	}
 	res := s.Run()
-	out := Outcome{Result: res}
-	if res.Stop != sim.Quiescent {
-		out.Failures = append(out.Failures, fmt.Sprintf("run stopped: %s %s", res.Stop, res.Detail))
-	}
+	out := Outcome{Result: res, Failures: stopFailures(res)}
 	out.Failures = append(out.Failures, c.check(o, func(id env.NodeID) ([]byte, error) { return s.Disk(id).ReadFile("wal") })...)
 	for _, cl := range c.cls {
 		out.Retries += cl.Retries()
 	}
 	return out, nil
+}
+
+// stopFailures reports a run that did not end quiescent; invariants alone may still hold then.
+func stopFailures(res sim.Result) []string {
+	if res.Stop != sim.Quiescent {
+		return []string{fmt.Sprintf("run stopped: %s %s", res.Stop, res.Detail)}
+	}
+	return nil
 }
 
 // check verifies completion, read correctness, replica agreement and log replay.
@@ -272,6 +277,9 @@ func RunReal(root string, o Options, timeout time.Duration) (RealOutcome, error)
 	if err := o.validate(); err != nil {
 		return RealOutcome{}, err
 	}
+	if timeout <= 0 || timeout > 10*time.Minute {
+		return RealOutcome{}, errors.New("scenario: real-runtime timeout must be in (0, 10m]")
+	}
 	rc, err := realenv.New(root)
 	if err != nil {
 		return RealOutcome{}, err
@@ -312,16 +320,22 @@ func RunReal(root string, o Options, timeout time.Duration) (RealOutcome, error)
 // settled reports, from each node's own goroutine, whether all work is done and replicated.
 func (c *cluster) settled(rc *realenv.Cluster, o Options) bool {
 	ok := true
+	// A node that cannot be asked (the cluster closed) counts as not settled.
+	do := func(id env.NodeID, f func()) {
+		if err := rc.Do(id, f); err != nil {
+			ok = false
+		}
+	}
 	for _, id := range c.clients {
 		cl := c.cls[id]
-		_ = rc.Do(id, func() { ok = ok && cl.Completed() == o.Ops })
+		do(id, func() { ok = ok && cl.Completed() == o.Ops })
 	}
 	var logLen, committed uint64
-	_ = rc.Do(kv.PrimaryID, func() { logLen, committed, _ = c.replicas[kv.PrimaryID].Progress() })
+	do(kv.PrimaryID, func() { logLen, committed, _ = c.replicas[kv.PrimaryID].Progress() })
 	ok = ok && committed == logLen
 	for _, id := range c.backups {
 		r := c.replicas[id]
-		_ = rc.Do(id, func() { _, _, applied := r.Progress(); ok = ok && applied == logLen })
+		do(id, func() { _, _, applied := r.Progress(); ok = ok && applied == logLen })
 	}
 	return ok
 }

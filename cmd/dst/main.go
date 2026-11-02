@@ -99,18 +99,23 @@ func cmdRun(args []string, out io.Writer) (int, error) {
 	if err := parse(fs, args); err != nil {
 		return 2, err
 	}
+	var f *os.File
 	var tw *bufio.Writer
 	if *trace != "" {
-		f, err := os.Create(filepath.Clean(*trace))
-		if err != nil {
+		var err error
+		if f, err = os.Create(filepath.Clean(*trace)); err != nil {
 			return 2, err
 		}
-		defer f.Close()
 		tw = bufio.NewWriter(f)
-		defer tw.Flush()
 		o.Trace = tw
 	}
 	res, err := scenario.Run(*seed, *o)
+	if f != nil {
+		// A trace that could not be written completely is an error, not a silent truncation.
+		if terr := errors.Join(res.TraceErr, tw.Flush(), f.Close()); err == nil && terr != nil {
+			return 2, fmt.Errorf("trace %s: %w", *trace, terr)
+		}
+	}
 	if err != nil {
 		return 2, err
 	}
@@ -194,12 +199,15 @@ func cmdReal(args []string, out io.Writer) (int, error) {
 	fs.SetOutput(flagOutput)
 	o := workloadFlags(fs)
 	dir := fs.String("dir", ".tmp/real", "directory for node files (emptied first)")
-	timeout := fs.Duration("timeout", 30*time.Second, "give up after this long")
+	timeout := fs.Duration("timeout", 30*time.Second, "give up after this long (at most 10m)")
 	if err := parse(fs, args); err != nil {
 		return 2, err
 	}
 	if o.Net != scenario.Default().Net {
 		return 2, errors.New("network flags apply to the simulator only")
+	}
+	if *timeout <= 0 || *timeout > 10*time.Minute {
+		return 2, errors.New("timeout must be in (0, 10m]")
 	}
 	root := filepath.Clean(*dir)
 	if err := os.RemoveAll(root); err != nil {

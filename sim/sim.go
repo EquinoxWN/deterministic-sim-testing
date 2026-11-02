@@ -43,7 +43,7 @@ type Config struct {
 	Net       NetConfig
 	MaxEvents int           // stop after this many events (default DefaultMaxEvents)
 	MaxTime   time.Duration // stop at this virtual time (default DefaultMaxTime)
-	Trace     io.Writer     // optional: every event as one line
+	Trace     io.Writer     // optional: every event as one line; the first write error ends tracing and is reported in Result.TraceErr
 }
 
 // StopReason says why a run ended.
@@ -71,6 +71,7 @@ type Result struct {
 	TimersFired int
 	VirtualTime time.Duration
 	TraceHash   string // SHA-256 over every event line
+	TraceErr    error  // first error from Config.Trace, if any; the trace hash is still complete
 }
 
 type eventKind uint8
@@ -308,8 +309,10 @@ func (s *Simulator) traceLine(format string, args ...any) {
 	s.line = fmt.Appendf(s.line[:0], format, args...)
 	s.line = append(s.line, '\n')
 	_, _ = s.hash.Write(s.line)
-	if s.cfg.Trace != nil {
-		_, _ = s.cfg.Trace.Write(s.line)
+	if s.cfg.Trace != nil && s.res.TraceErr == nil {
+		if _, err := s.cfg.Trace.Write(s.line); err != nil {
+			s.res.TraceErr = fmt.Errorf("sim: trace writer: %w", err)
+		}
 	}
 }
 
