@@ -284,3 +284,35 @@ func TestTraceHashExposesMapOrderNondeterminism(t *testing.T) {
 		t.Fatal("ten runs of a map-order-dependent node gave one trace; the hash should expose it")
 	}
 }
+
+// failWriter accepts n writes, then fails every later one.
+type failWriter struct{ n, calls int }
+
+func (w *failWriter) Write(p []byte) (int, error) {
+	w.calls++
+	if w.calls > w.n {
+		return 0, errors.New("disk full")
+	}
+	return len(p), nil
+}
+
+func TestTraceWriteErrorIsReported(t *testing.T) {
+	w := &failWriter{n: 3}
+	s, err := New(Config{Seed: 42, Net: NetConfig{MinLatency: time.Millisecond, MaxLatency: 30 * time.Millisecond, DropRate: 0.1, DupRate: 0.1}, Trace: w})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.AddNode(1, &pinger{peer: 2, serve: true, left: 30})
+	_ = s.AddNode(2, &pinger{peer: 1, left: 30})
+	res := s.Run()
+	want, _ := pingRun(t, 42)
+	if res.TraceErr == nil || !strings.Contains(res.TraceErr.Error(), "disk full") {
+		t.Fatalf("trace error not reported: %v", res.TraceErr)
+	}
+	if w.calls != 4 || res.TraceHash != want.TraceHash {
+		t.Fatalf("tracing should stop after the first error (calls %d) and keep the hash (%s vs %s)", w.calls, res.TraceHash, want.TraceHash)
+	}
+	if want.TraceErr != nil {
+		t.Fatalf("run without a trace writer reported %v", want.TraceErr)
+	}
+}

@@ -51,3 +51,16 @@ func TestDiskRejectsBadNamesAndHugeFiles(t *testing.T) {
 		t.Fatalf("huge append: %v", err)
 	}
 }
+
+func TestDiskSizeCapIsInclusive(t *testing.T) {
+	d := NewDisk()
+	if err := d.Append("full", make([]byte, env.MaxFileSize-1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Append("full", []byte{1}); err != nil {
+		t.Fatalf("a file of exactly MaxFileSize bytes must be accepted: %v", err)
+	}
+	if err := d.Append("full", []byte{2}); !errors.Is(err, env.ErrFileTooLarge) {
+		t.Fatalf("one byte past MaxFileSize: %v", err)
+	}
+}

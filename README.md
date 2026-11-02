@@ -19,7 +19,7 @@ nodes also pass on the real runtime (UDP loopback, wall clock, real files):
 
 ![dst e2e: two seed sweeps, a replay and the real runtime](docs/proof/e2e.jpg)
 
-39 tests pass, the determinism lint finds nothing in the example service, and govulncheck finds no
+39 tests passed at M1 (47 since the [2026-11-01 quality pass](docs/quality/2026-11-01.md)), the determinism lint finds nothing in the example service, and govulncheck finds no
 vulnerabilities:
 
 ![gofmt, go vet, dst lint, go test and govulncheck output](docs/proof/tests.jpg)
@@ -89,7 +89,7 @@ run in about 2 ms); measuring hours of cluster time is M2.
 | Real runtime | `realenv`: wall clock, UDP on 127.0.0.1 with sender checks, files per node, ChaCha8 generator | |
 | Determinism lint | `dstlint` / `dst lint`: AST check for nondeterministic imports, wall-clock calls, goroutines, `select` | |
 | Example target | `example/kv`: primary-backup store with WAL, resends, retries, deduplication, and a deliberate arrival-order bug | multi-raft-kv and percolator-txn (M3) |
-| Quality | gofmt, go vet, 39 tests (race detector in CI), golden trace hash, govulncheck, CI seed sweeps | |
+| Quality | gofmt, go vet, 47 tests (race detector in CI), golden trace hash, govulncheck, CI seed sweeps | |
 
 Language: **Go 1.26**, standard library only.
 
@@ -138,18 +138,18 @@ Latest local run (full detail in [docs/results/m1.md](docs/results/m1.md)):
 
 | Test file | Tests | What it proves |
 |---|---|---|
-| `sim/sim_test.go` | 9 | Same seed same run; 20 seeds 20 traces; timer order and Stop; network model over 20,000 messages; send errors; limits; Halt and panics; config errors; map-order nondeterminism exposed by the trace hash |
-| `sim/disk_test.go` | 2 | Append, sync, read with synced length; copies; bad names and the size cap refused |
+| `sim/sim_test.go` | 10 | Same seed same run; 20 seeds 20 traces; timer order and Stop; network model over 20,000 messages; send errors; limits; Halt and panics; config errors; map-order nondeterminism exposed by the trace hash; a failing trace writer is reported |
+| `sim/disk_test.go` | 3 | Append, sync, read with synced length; copies; bad names and the size cap refused; a file of exactly the cap accepted |
 | `env/env_test.go` | 1 | File-name rule refuses traversal, separators, drive letters, NUL, upper case |
 | `realenv/realenv_test.go` | 4 | UDP messages, timers and files on the real runtime; stopped timers; input validation; datagrams from outside the cluster or with a forged sender dropped |
-| `example/kv/kv_test.go` | 10 | In-sequence apply and cumulative acks; the deliberate bug; commit only after every backup; retry deduplication; resends; strangers ignored; strict decoding; WAL replay; stale-read detection |
+| `example/kv/kv_test.go` | 12 | In-sequence apply and cumulative acks; the deliberate bug; commit only after every backup; retry deduplication; resends; strangers ignored; strict decoding; WAL replay; stale-read detection; acks beyond the log ignored; bounded reorder buffer |
 | `dstlint/dstlint_test.go` | 4 | Example clean; all 8 forbidden constructs found at the right lines; dot import of `time`; missing package |
-| `internal/scenario/scenario_test.go` | 7 | 300 seeds pass; the bug is found and its seed replays exactly; golden trace hash; no retries on a perfect network; correct under 30% loss; bounded options; real runtime passes |
-| `cmd/dst/main_test.go` | 2 | Every subcommand's output and exit code; usage errors |
+| `internal/scenario/scenario_test.go` | 10 | 300 seeds pass; the bug is found and its seed replays exactly; golden trace hash; no retries on a perfect network; correct under 30% loss; bounded options; real runtime passes; a run that does not quiesce fails; bounded real-runtime timeout; a closed cluster is not settled |
+| `cmd/dst/main_test.go` | 3 | Every subcommand's output and exit code; usage errors; a bad `real -timeout` is refused before the directory is emptied |
 
 | Check | Result |
 |---|---|
-| Tests | 39 passed, 0 failed |
+| Tests | 47 passed, 0 failed |
 | Lint | gofmt, go vet, `dst lint example/kv`: clean |
 | Audit | govulncheck v1.8.0 (Go 1.26.10): no vulnerabilities; no third-party modules |
 | Correct store, 1,000 seeds (5% loss, 2% duplicates) | 0 failures; 561,593 events, 39 min of virtual time in 2.07 s (1135x) |
@@ -203,6 +203,7 @@ What this repo must show before it counts as done:
 - [ADR 0002: simulate with a single-threaded event loop over explicit interfaces](docs/adr/0002-single-threaded-event-loop.md)
 - [ADR 0003: one seeded generator for every choice, and a trace hash as the proof](docs/adr/0003-one-generator-and-a-trace-hash.md)
 - [M1 results](docs/results/m1.md)
+- [Quality check 2026-11-01](docs/quality/2026-11-01.md): the ten quality rules with evidence and a mutation table
 
 ## Scope
 

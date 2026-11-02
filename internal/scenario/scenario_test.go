@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/EquinoxWN/deterministic-sim-testing/realenv"
 	"github.com/EquinoxWN/deterministic-sim-testing/sim"
 )
 
@@ -117,5 +118,45 @@ func TestSameNodesOnTheRealRuntime(t *testing.T) {
 	}
 	if len(out.Failures) != 0 {
 		t.Fatalf("real runtime: %v", out.Failures)
+	}
+}
+
+func TestRunThatDoesNotQuiesceFails(t *testing.T) {
+	for _, stop := range []sim.StopReason{sim.MaxEventsReached, sim.MaxTimeReached, sim.Halted, sim.Panicked} {
+		f := stopFailures(sim.Result{Stop: stop, Detail: "x"})
+		if len(f) != 1 || !strings.Contains(f[0], string(stop)) {
+			t.Errorf("%s: failures %v", stop, f)
+		}
+	}
+	if f := stopFailures(sim.Result{Stop: sim.Quiescent}); f != nil {
+		t.Errorf("quiescent run reported %v", f)
+	}
+}
+
+func TestRealRuntimeTimeoutIsBounded(t *testing.T) {
+	for _, d := range []time.Duration{0, -time.Second, 11 * time.Minute} {
+		if _, err := RunReal(t.TempDir(), Default(), d); err == nil {
+			t.Errorf("timeout %s accepted", d)
+		}
+	}
+}
+
+func TestClosedClusterIsNotSettled(t *testing.T) {
+	rc, err := realenv.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := Default()
+	c := build(o)
+	for id, n := range c.nodes() {
+		if err := rc.Add(id, n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rc.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if c.settled(rc, o) {
+		t.Fatal("a cluster that cannot be asked was reported as settled")
 	}
 }

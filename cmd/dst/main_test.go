@@ -48,6 +48,7 @@ func TestUsageErrors(t *testing.T) {
 		{"run", "-seed", "x"},
 		{"run", "extra"},
 		{"sweep", "-count", "0"},
+		{"sweep", "-count", "100001"},
 		{"replay", "-runs", "1"},
 		{"real", "-drop", "0.5"},
 		{"lint"},
@@ -58,5 +59,22 @@ func TestUsageErrors(t *testing.T) {
 		if code, err := run(args, &out); code != 2 || err == nil {
 			t.Errorf("%v: code %d err %v", args, code, err)
 		}
+	}
+}
+
+func TestRealRefusesBadTimeoutBeforeEmptyingDir(t *testing.T) {
+	dir := t.TempDir()
+	keep := filepath.Join(dir, "keep.txt")
+	if err := os.WriteFile(keep, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"0s", "-1s", "11m"} {
+		var out bytes.Buffer
+		if code, err := run([]string{"real", "-dir", dir, "-timeout", d}, &out); code != 2 || err == nil {
+			t.Errorf("-timeout %s: code %d err %v", d, code, err)
+		}
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("directory emptied before the options were checked: %v", err)
 	}
 }

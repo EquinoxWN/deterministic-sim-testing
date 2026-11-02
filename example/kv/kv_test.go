@@ -308,3 +308,33 @@ func TestClientFlagsStaleReadAndRetries(t *testing.T) {
 		t.Fatal("client kept sending after its last operation")
 	}
 }
+
+func TestPrimaryIgnoresAckBeyondItsLog(t *testing.T) {
+	f := newFake(PrimaryID)
+	r := NewReplica(ReplicaConfig{Backups: []env.NodeID{2, 3}, RetransmitEvery: time.Millisecond})
+	r.Start(f)
+	r.Receive(2, encode(message{Type: tAck, Seq: 1})) // acknowledges a write that does not exist yet
+	r.Receive(101, encode(message{Type: tPut, Req: 1, Key: "a", Value: "1"}))
+	r.Receive(3, encode(message{Type: tAck, Seq: 1}))
+	if _, c, _ := r.Progress(); c != 0 || len(r.State()) != 0 {
+		t.Fatalf("write committed although backup 2 never held it: committed %d", c)
+	}
+	r.Receive(2, encode(message{Type: tAck, Seq: 1}))
+	if _, c, _ := r.Progress(); c != 1 {
+		t.Fatalf("write not committed after both real acks: committed %d", c)
+	}
+}
+
+func TestBackupBufferIsBounded(t *testing.T) {
+	f := newFake(2)
+	r := NewReplica(ReplicaConfig{Backups: []env.NodeID{2}})
+	r.Start(f)
+	r.Receive(PrimaryID, repl(maxBuffer, "a", "edge"))
+	r.Receive(PrimaryID, repl(maxBuffer+1, "b", "far"))
+	if len(r.buffer) != 1 {
+		t.Fatalf("backup buffered %d writes, want only the one within maxBuffer", len(r.buffer))
+	}
+	if _, held := r.buffer[maxBuffer+1]; held {
+		t.Fatal("a write beyond the buffer window was kept")
+	}
+}
